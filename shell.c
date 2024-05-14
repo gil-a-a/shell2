@@ -10,10 +10,6 @@
 #include <unistd.h>
 
 /*
-4. (0,5) Quando a entrada do usuário não é um programa ou comando válido, deve ser
-mostrada uma mensagem de erro adequada.
-5. (1,0) Os argumentos digitados na linha de comando devem ser passados ao programa
-que será executado.
 12. (1,0) O processador de comandos deve permitir o uso de pipes. O símbolo | indica a
 separação entre cada programa, conectando a saída padrão do programa à esquerda
 com a entrada padrão do programa à direita através de um pipe.
@@ -22,6 +18,13 @@ linha de comando.
 */
 
 #define INPUT_SIZE 5000
+#define N_COMANDS 20
+#define N_PARAMS 20
+
+typedef struct s_comando{
+	char comando[51];
+	char **args;
+}Comando;
 
 void prompt()
 {
@@ -51,53 +54,97 @@ void prompt()
 		dir[i] = '\0';	//zera a string do diretório
 }
 
-/*
-To-do:
-- Separar os argumentos e colocar em uma lista
-- Separar cada comando pelos pipes
-*/
-
 void separa_argumentos(char *input, char *comando, char **args)
 {
 	char *str_aux = strtok(input, " ");
 	
 	strcpy(comando, str_aux);
-	int i = 0;
+	strcpy(args[0], str_aux);	//coloca o nome do programa no começo
+	
+	int i = 1;
 	do{
 		str_aux = strtok(NULL, " ");
 
-		/*
-		Mudar aq pra if (str_aux != NULL)
-						strcpy(...)
-		e adicionar o null no fim da lista
-		*/
-		if (str_aux == NULL){
-			// strcpy(args[i], "");
-			free(args[i]);
-			args[i] = NULL;
-		}
-		else
-			strcpy(args[i], str_aux);
+		if (str_aux != NULL)
+			strcpy(args[i], str_aux);	//copia cada argumento pra lista
+		
 		i++;
 	}while(str_aux != NULL);
+	
+	i--;
+
+	free(args[i]);
+	args[i] = NULL;	//coloca null no fim
 }
+
+/*
+To-do:
+- Separar cada comando pelos pipes
+*/
+
+int separa_comandos(char *input, struct s_comando **comandos)
+{
+	char *str, *str_aux = malloc(sizeof(char)*INPUT_SIZE);
+	int i = 0;
+	
+	/*
+	 * chama a função de separar os argumentos e passa:
+	 * 	a string do strtok e a struct do comando
+	 * aí faz isso pra cada string até chegar no fim.
+	 * 
+	 * Vou ter q checar se tem espaço na string q passar pra função 
+	 * de cima, ent é isso aí
+	 * */
+	
+	str = strtok(input, "|");
+	while(str != NULL) {
+		strcpy(str_aux, str);
+		separa_argumentos(str_aux, comandos[i]->comando, comandos[i]->args);
+		str = strtok(NULL, "|");
+		
+		i++;
+	}
+	
+	free(str_aux);
+	return i;
+}
+
+Comando** aloca_comandos()
+{
+	Comando **c = malloc(sizeof(Comando *)*N_COMANDS);	//aloca N comandos
+	for (int i = 0; i < N_COMANDS; i++){
+		c[i] = malloc(sizeof(Comando));
+		c[i]->args = malloc(sizeof(char *)*N_PARAMS);	//aloca M parâmetros
+		for (int j = 0; j < N_PARAMS; j++){
+			c[i]->args[j] = malloc(sizeof(char)*101);	//aloca 101 bytes pra cada parâmetro
+		}
+	}
+	
+	return c;
+}
+
+//fazer a função de desalocar
 
 void executa(char *input)
 {
 	int status;
-	char comando[INPUT_SIZE], **args;	//mudar isso aq pra memória dinâmica: args[1][INPUT_SIZE]
+	char comando[INPUT_SIZE], **args;
+	Comando **comandos = aloca_comandos();
+	
+	int n_comando = separa_comandos(input, comandos);
 	
 	//separa o nome do comando e os argumentos
-	args = malloc(sizeof(char *)*20);			//aloca 20 parâmetros
-	for (int i = 0; i < 20; i++)
+	/*
+	args = malloc(sizeof(char *)*N_PARAMS);			//aloca 20 parâmetros
+	for (int i = 0; i < N_PARAMS; i++)
 		args[i] = malloc(sizeof(char)*101);	//aloca 101 bytes pra cada parâmetro
-	separa_argumentos(input, comando, args);
 	
-	for (int i = 0; i < 20; i++){
+	for (int i = 0; i < N_PARAMS; i++){
 		if (args[i] == NULL)
 			break;
 		printf("%s\n", args[i]);
 	}
+	*/
 
 	pid_t pid = fork();
 
@@ -114,7 +161,14 @@ void executa(char *input)
 			printf("Exit status: %d\n", WEXITSTATUS(status));
 	}
 
-	//liberar a memória dos args
+	//libera a memória dos comandos
+	/*
+	for (int i = 0; i < N_PARAMS; i++){
+		free(args[i]);
+		args[i] = NULL;
+	}
+	free(args);
+	*/
 }
 
 void cd(char *input)
