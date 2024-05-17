@@ -58,6 +58,9 @@ void separa_argumentos(char *input, char *comando, char **args)
 {
 	char *str_aux = strtok(input, " ");
 	
+	printf("Args:\n");
+	printf("[%s]\n", str_aux);
+
 	strcpy(comando, str_aux);
 	strcpy(args[0], str_aux);	//coloca o nome do programa no começo
 	
@@ -65,8 +68,10 @@ void separa_argumentos(char *input, char *comando, char **args)
 	do{
 		str_aux = strtok(NULL, " ");
 
-		if (str_aux != NULL)
+		if (str_aux != NULL){
 			strcpy(args[i], str_aux);	//copia cada argumento pra lista
+			printf("[%s]\n", str_aux);
+		}
 		
 		i++;
 	}while(str_aux != NULL);
@@ -77,36 +82,29 @@ void separa_argumentos(char *input, char *comando, char **args)
 	args[i] = NULL;	//coloca null no fim
 }
 
-/*
-To-do:
-- Separar cada comando pelos pipes
-*/
-
 int separa_comandos(char *input, struct s_comando **comandos)
 {
-	char *str, *str_aux = malloc(sizeof(char)*INPUT_SIZE);
-	int i = 0;
+	char *str, *str_aux;
+	int i = 0, cont = 0;	//contador de comandos
 	
-	/*
-	 * chama a função de separar os argumentos e passa:
-	 * 	a string do strtok e a struct do comando
-	 * aí faz isso pra cada string até chegar no fim.
-	 * 
-	 * Vou ter q checar se tem espaço na string q passar pra função 
-	 * de cima, ent é isso aí
-	 * */
-	
-	str = strtok(input, "|");
-	while(str != NULL) {
-		strcpy(str_aux, str);
-		separa_argumentos(str_aux, comandos[i]->comando, comandos[i]->args);
-		str = strtok(NULL, "|");
-		
+	str = input;
+	while(str[i] != '\0'){
+		if (str[i] == '|'){
+			str[i] = '\0';
+			str_aux = str+i+1;
+			separa_argumentos(str, comandos[cont]->comando, comandos[cont]->args);	//separa os argumentos do comando
+			str = str_aux;
+			cont++;
+			i = 0;
+		}
+
 		i++;
 	}
+
+	separa_argumentos(str, comandos[cont]->comando, comandos[cont]->args);	//adiciona no fim do vetor
+	cont++;
 	
-	free(str_aux);
-	return i;
+	return cont;
 }
 
 Comando** aloca_comandos()
@@ -123,35 +121,45 @@ Comando** aloca_comandos()
 	return c;
 }
 
-//fazer a função de desalocar
 
+/*
+Todo:
+- Fazer os pipes e conectar a saída de um processo à entrada de outro
+- Fazer a função de desalocar a struct de comandos
+*/
 void executa(char *input)
 {
 	int status;
 	char comando[INPUT_SIZE], **args;
 	Comando **comandos = aloca_comandos();
 	
-	int n_comando = separa_comandos(input, comandos);
-	
-	//separa o nome do comando e os argumentos
-	/*
-	args = malloc(sizeof(char *)*N_PARAMS);			//aloca 20 parâmetros
-	for (int i = 0; i < N_PARAMS; i++)
-		args[i] = malloc(sizeof(char)*101);	//aloca 101 bytes pra cada parâmetro
-	
-	for (int i = 0; i < N_PARAMS; i++){
-		if (args[i] == NULL)
-			break;
-		printf("%s\n", args[i]);
-	}
-	*/
+	int n_comando = separa_comandos(input, comandos);	//Coloca cada comando e seus argumentos em uma posição do vetor
 
+	printf("Nº de comandos: %d\n", n_comando);
+	for (int i = 0; i < n_comando; i++){
+		pid_t pid = fork();
+
+		if (pid < 0)			//erro
+			fprintf(stderr, "Erro ao criar processo\n");
+		else if (pid == 0){		//filho
+			execvp(comandos[i]->comando, comandos[i]->args);
+			fprintf(stderr, "Erro: %s\n", strerror(errno));	//Por enquanto essa mensagem de erro é suficiente
+			exit(1);
+		}
+		else{					//pai
+			wait(&status);
+			if (WIFEXITED(status))
+				printf("Exit status: %d\n", WEXITSTATUS(status));
+		}
+	}
+
+	/*
 	pid_t pid = fork();
 
 	if (pid < 0)			//erro
-		printf("Erro ao criar processo\n");
+		fprintf(stderr, "Erro ao criar processo\n");
 	else if (pid == 0){		//filho
-		execvp(comando, args);
+		execvp(comandos[0]->comando, comandos[0]->args);
 		fprintf(stderr, "Erro: %s\n", strerror(errno));	//Por enquanto essa mensagem de erro é suficiente
 		exit(1);
 	}
@@ -159,16 +167,10 @@ void executa(char *input)
 		wait(&status);
 		if (WIFEXITED(status))
 			printf("Exit status: %d\n", WEXITSTATUS(status));
-	}
+	}*/
+
 
 	//libera a memória dos comandos
-	/*
-	for (int i = 0; i < N_PARAMS; i++){
-		free(args[i]);
-		args[i] = NULL;
-	}
-	free(args);
-	*/
 }
 
 void cd(char *input)
