@@ -151,6 +151,7 @@ void executa(char *input)
 
 		dup2(fd[0][1], STDOUT_FILENO);
 		execvp(comandos[j]->comando, comandos[j]->args);
+		fprintf(stderr, "Erro: %s\n", strerror(errno));	//Por enquanto essa mensagem de erro é suficiente
 		return;
 	}
 	j++;
@@ -173,6 +174,7 @@ void executa(char *input)
 			dup2(fd[j-1][0], STDIN_FILENO);
 			dup2(fd[j][1], STDOUT_FILENO);
 			execvp(comandos[j]->comando, comandos[j]->args);
+			fprintf(stderr, "Erro: %s\n", strerror(errno));	//Por enquanto essa mensagem de erro é suficiente
 			return;
 		}
 	}
@@ -192,6 +194,7 @@ void executa(char *input)
 
 			// printf("n_pipes-1: %d\n", n_pipes-1);
 			dup2(fd[n_pipes-1][0], STDIN_FILENO);
+			fprintf(stderr, "Erro: %s\n", strerror(errno));	//Por enquanto essa mensagem de erro é suficiente
 			execvp(comandos[j]->comando, comandos[j]->args);
 			return;
 		}
@@ -306,10 +309,11 @@ int main ()
 		if (!strcmp("exit", input))
 			break;
 		
-		executa(input);
-
-		if (!strncmp("cd", input, 2) && (strlen(input) == 2 || input[2] == ' '))	//compara se o comando começa com cd e se tem ou não algum argumento na frente
+		if (!strncmp("cd", input, 2) && (strlen(input) == 2 || input[2] == ' ')){	//compara se o comando começa com cd e se tem ou não algum argumento na frente
 			cd(input);
+			continue;
+		}
+		executa(input);
 
 	}while(1);
 	
