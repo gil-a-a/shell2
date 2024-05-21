@@ -9,14 +9,6 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-/*
-12. (1,0) O processador de comandos deve permitir o uso de pipes. O símbolo | indica a
-separação entre cada programa, conectando a saída padrão do programa à esquerda
-com a entrada padrão do programa à direita através de um pipe.
-13. (2,0) O processador de comandos deve permitir o uso de múltiplos pipes na mesma
-linha de comando.
-*/
-
 #define INPUT_SIZE 5000
 #define N_COMANDS 20
 #define N_PARAMS 20
@@ -58,8 +50,8 @@ void separa_argumentos(char *input, char *comando, char **args)
 {
 	char *str_aux = strtok(input, " ");
 	
-	printf("Args:\n");
-	printf("[%s]\n", str_aux);
+	// printf("Args:\n");
+	// printf("[%s]\n", str_aux);
 
 	strcpy(comando, str_aux);
 	strcpy(args[0], str_aux);	//coloca o nome do programa no começo
@@ -70,7 +62,7 @@ void separa_argumentos(char *input, char *comando, char **args)
 
 		if (str_aux != NULL){
 			strcpy(args[i], str_aux);	//copia cada argumento pra lista
-			printf("[%s]\n", str_aux);
+			// printf("[%s]\n", str_aux);
 		}
 		
 		i++;
@@ -121,10 +113,8 @@ Comando** aloca_comandos()
 	return c;
 }
 
-
 /*
 Todo:
-- Fazer os pipes e conectar a saída de um processo à entrada de outro
 - Fazer a função de desalocar a struct de comandos
 */
 void executa(char *input)
@@ -133,8 +123,93 @@ void executa(char *input)
 	char comando[INPUT_SIZE], **args;
 	Comando **comandos = aloca_comandos();
 	
-	int n_comando = separa_comandos(input, comandos);	//Coloca cada comando e seus argumentos em uma posição do vetor
+	int n_comandos = separa_comandos(input, comandos);	//Coloca cada comando e seus argumentos num vetor
+	int n_pipes = n_comandos-1;
+	int j = 0;
 
+	int fd[n_pipes][2];	//cria n-1 pipes
+
+	// printf("Nº de comandos: %d\n", n_comandos);
+	if (n_comandos <= 0){
+		fprintf(stderr, "Erro ao executar comandos\n");
+		return;
+	}
+
+	for (int i = 0; i < n_pipes; i++)
+		pipe(fd[i]);	//inicializa os pipes
+
+	//primeiro processo
+	pid_t pid = fork();
+	if (pid < 0)
+		fprintf(stderr, "Erro: %s\n", strerror(errno));
+	else if (pid == 0){	//executa o primeiro comando
+		for (int i = 0; i < n_pipes; i++){
+			close(fd[i][0]);
+			if (i != 0)
+				close(fd[i][1]);	//deixa o fd[0][1] aberto
+		}
+
+		dup2(fd[0][1], STDOUT_FILENO);
+		execvp(comandos[j]->comando, comandos[j]->args);
+		return;
+	}
+	j++;
+
+	//processos do meio
+	for (j = 1; j < n_pipes; j++){
+		// printf("Meio\n");
+		pid = fork();
+		if (pid < 0)
+			fprintf(stderr, "Erro: %s\n", strerror(errno));
+		else if (pid == 0){
+			for (int i = 0; i < n_pipes; i++){
+				if (i != j-1)
+					close(fd[i][0]);
+				if (i == j)
+					close(fd[i][1]);	//fecha os pipes não usados
+			}
+
+			// printf("pipes do processo %d: %d - %d\n", pid, fd[j-1][0], fd[j][1]);
+			dup2(fd[j-1][0], STDIN_FILENO);
+			dup2(fd[j][1], STDOUT_FILENO);
+			execvp(comandos[j]->comando, comandos[j]->args);
+			return;
+		}
+	}
+	
+	//último processo
+	if (n_comandos > 1){
+		// printf("Fim\n");
+		pid = fork();
+		if (pid < 0)
+			fprintf(stderr, "Erro: %s\n", strerror(errno));
+		else if (pid == 0){	//executa o primeiro comando
+			for (int i = 0; i < n_pipes; i++){
+				if (i != n_pipes-1)
+					close(fd[i][0]);	//deixa o fd[n_pipes-1][0] aberto
+				close(fd[i][1]);
+			}
+
+			// printf("n_pipes-1: %d\n", n_pipes-1);
+			dup2(fd[n_pipes-1][0], STDIN_FILENO);
+			execvp(comandos[j]->comando, comandos[j]->args);
+			return;
+		}
+	}
+
+	for (int i = 0; i < n_pipes; i++){
+		close(fd[i][0]);
+		close(fd[i][1]);
+	}
+
+	for (int i = 0; i < n_comandos; i++){
+		// printf("i: %d\n", i);
+		wait(&status);
+		// if (WIFEXITED(status))
+			// printf("Exit status: %d\n", WEXITSTATUS(status));
+	}
+
+	/*
 	printf("Nº de comandos: %d\n", n_comando);
 	for (int i = 0; i < n_comando; i++){
 		pid_t pid = fork();
@@ -142,18 +217,19 @@ void executa(char *input)
 		if (pid < 0)			//erro
 			fprintf(stderr, "Erro ao criar processo\n");
 		else if (pid == 0){		//filho
+			sleep(2);
 			execvp(comandos[i]->comando, comandos[i]->args);
 			fprintf(stderr, "Erro: %s\n", strerror(errno));	//Por enquanto essa mensagem de erro é suficiente
 			exit(1);
 		}
 		else{					//pai
+			//mudar aqui pra while(wait(NULL) == -1);
 			wait(&status);
 			if (WIFEXITED(status))
 				printf("Exit status: %d\n", WEXITSTATUS(status));
 		}
 	}
-
-	/*
+	//
 	pid_t pid = fork();
 
 	if (pid < 0)			//erro
@@ -223,16 +299,15 @@ int main ()
 			input[i] = 0;
 		if (!read(STDIN_FILENO, input, INPUT_SIZE))	//recebe a entrada ou sai do loop caso receba o sinal do ctrl+d
 			break;
-		input[strlen(input)-1] = '\0';			//tira o \n do fim da string
+		if (input[0] == '\n' || input[0] == '\0')
+			continue;
+		input[strlen(input)-1] = '\0';	//tira o \n do fim da string
 		
 		if (!strcmp("exit", input))
 			break;
 		
-		executa(input);							//manda executar comando
+		executa(input);
 
-		//Ach q essa comparação n tem sentido, pq se der erro na hora de executar o cd ele vai avisar
-		//Talvez eu botei ela aq pra n ter alguma forma de "injetar" um cd
-		//Se mais pra frente eu n ver sentido, vou tirar 
 		if (!strncmp("cd", input, 2) && (strlen(input) == 2 || input[2] == ' '))	//compara se o comando começa com cd e se tem ou não algum argumento na frente
 			cd(input);
 
